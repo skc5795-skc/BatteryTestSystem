@@ -1,0 +1,16 @@
+# Battery Test System - Dependencies
+# Install with: pip install -r requirements.txt
+
+# ── Desktop (PyQt6) ────────────────────────────────────────────────────────
+PyQt6>=6.4.0
+pyqtgraph>=0.13.0
+
+# ── Web (Streamlit) ────────────────────────────────────────────────────────
+streamlit>=1.32.0
+plotly>=5.18.0
+
+# ── Shared ────────────────────────────────────────────────────────────────
+pyserial>=3.5
+numpy>=1.24.0
+reportlab>=4.0.0
+pandas>=2.0.0
