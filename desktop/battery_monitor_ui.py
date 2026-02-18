@@ -249,8 +249,8 @@ class BatteryTestUI(QMainWindow):
             pos=discharge_end, angle=0,
             pen=pg.mkPen(color='#e67e22', width=2,
                          style=Qt.PenStyle.DashLine),
-            label=f"Min {discharge_end}V",
-            labelOpts={'color': '#e67e22', 'position': 0.05}
+            label=f"Discharge Limit: {discharge_end}V",
+            labelOpts={'color': '#e67e22', 'position': 0.07}
         )
         self.plot_widget.addItem(self.storage_line)
         self.plot_lines = []
