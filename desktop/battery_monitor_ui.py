@@ -13,7 +13,6 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QPixmap
 import pyqtgraph as pg
-from pyqtgraph.examples.AxisItem_label_overlap import font
 
 from core.config import (
     BATTERY_CHEMISTRIES, DEFAULT_CHEMISTRY, DEFAULT_RATED_CAPACITY_AH,
@@ -216,7 +215,7 @@ class BatteryTestUI(QMainWindow):
         self.plot_widget.setBackground('w')
         self.plot_widget.setLabel('left', 'Voltage', units='V')
         self.plot_widget.setLabel('bottom', 'Time', units='s')
-        self.plot_widget.setTitle('Discharge Curves', color='k', size='16pt')
+        self.plot_widget.setTitle('Discharge Curves: Cell Voltages + Current', color='k', size='13pt')
         self.plot_widget.addLegend(offset=(10, 10))
         self.plot_widget.showGrid(x=True, y=True, alpha=0.3)
 
@@ -250,8 +249,8 @@ class BatteryTestUI(QMainWindow):
             pos=discharge_end, angle=0,
             pen=pg.mkPen(color='#e67e22', width=2,
                          style=Qt.PenStyle.DashLine),
-            label=f"Discharge Limit: {discharge_end}V",
-            labelOpts={'color': '#e67e22', 'position': 0.07}
+            label=f"Min {discharge_end}V",
+            labelOpts={'color': '#e67e22', 'position': 0.05}
         )
         self.plot_widget.addItem(self.storage_line)
         self.plot_lines = []
@@ -341,9 +340,12 @@ class BatteryTestUI(QMainWindow):
         rows = [
             ('Avg Voltage', 'Min Voltage', 'Max Voltage', 'Spread'),
             ('Current',     'Runtime',     'Measured Capacity', 'Capacity %'),
+            ('SoC (BMS)',   'BMS Capacity', '', ''),
         ]
         for row_idx, row_items in enumerate(rows):
             for col_idx, name in enumerate(row_items):
+                if not name:  # Skip empty labels
+                    continue
                 lbl = QLabel(f"{name}:")
                 lbl.setStyleSheet("font-weight:bold;")
                 stats_grid.addWidget(lbl, row_idx, col_idx * 2)
@@ -596,7 +598,7 @@ class BatteryTestUI(QMainWindow):
         self._update_live_stats(voltages)
 
     def _on_info(self, info: dict):
-        """Called every 5 seconds with BMS basic info."""
+        """Called every 2 seconds with BMS basic info."""
         current = info.get('current_ma', 0)
         self.latest_current = current
 
@@ -608,7 +610,13 @@ class BatteryTestUI(QMainWindow):
         else:
             self.stat_labels['Current'].setText("0.00 A  (Idle)")
 
-        print(f"⚡ Current update: {current/1000.0:.2f} A")
+        # Update SoC and BMS Capacity
+        soc = info.get('rsoc_percent', 0)
+        bms_cap = info.get('residual_capacity_mah', 0)
+        self.stat_labels['SoC (BMS)'].setText(f"{soc}%")
+        self.stat_labels['BMS Capacity'].setText(f"{bms_cap} mAh")
+
+        print(f"⚡ Current: {current/1000.0:.2f} A | SoC: {soc}% | BMS Cap: {bms_cap} mAh")
 
         if self.engine.session:
             self.engine.update_bms_info(info)
