@@ -7,35 +7,25 @@ Shared between Desktop (PyQt6) and Web (Streamlit) apps
 BATTERY_CHEMISTRIES = {
     'NMC': {
         'name': 'NMC Prismatic',
-        'storage_voltage': 3.60,
+        'storage_voltage': 3.60,          # Long-term storage voltage
+        'discharge_end_voltage': 3.00,    # Test discharge endpoint (wait for BMS flag)
         'min_cell_voltage': 2.50,
         'max_cell_voltage': 4.20,
         'full_charge_voltage': 4.15,
         'cell_fail_voltage': 3.00,
+        'min_start_voltage': 3.60,        # Must be charged to at least storage voltage
+        'rated_capacity_ah': 62.0,
     },
     'LiPo': {
         'name': 'LiPo',
-        'storage_voltage': 3.80,
-        'min_cell_voltage': 3.00,
+        'storage_voltage': 3.80,          # Long-term storage voltage
+        'discharge_end_voltage': 3.00,    # Test discharge endpoint (wait for BMS flag)
+        'min_cell_voltage': 2.50,
         'max_cell_voltage': 4.20,
         'full_charge_voltage': 4.15,
         'cell_fail_voltage': 3.00,
-    },
-    'LiFePO4': {
-        'name': 'LiFePO4',
-        'storage_voltage': 3.30,
-        'min_cell_voltage': 2.50,
-        'max_cell_voltage': 3.65,
-        'full_charge_voltage': 3.55,
-        'cell_fail_voltage': 2.80,
-    },
-    'NCA': {
-        'name': 'NCA',
-        'storage_voltage': 3.67,
-        'min_cell_voltage': 2.50,
-        'max_cell_voltage': 4.20,
-        'full_charge_voltage': 4.10,
-        'cell_fail_voltage': 3.00,
+        'min_start_voltage': 3.80,        # Must be fully charged
+        'rated_capacity_ah': 46.0,
     },
 }
 
@@ -49,7 +39,7 @@ SERIAL_NUMBER_PREFIX      = 'B14S'
 DEFAULT_PASS_THRESHOLD_PCT = 95           # Actual must be >= 95% of rated
 CELL_IMBALANCE_WARNING_V   = 0.05         # 50mV spread warning
 CELL_IMBALANCE_ALERT_V     = 0.50         # 500mV spread = bad cell alert
-MIN_START_VOLTAGE          = 3.80         # Cells must start above this to begin test
+MIN_START_VOLTAGE          = 3.50         # Fallback min start voltage (per-chemistry used when available)
 
 # ── Serial Communication ──────────────────────────────────────────────────────
 DEFAULT_BAUD_RATE    = '9600'
@@ -72,3 +62,9 @@ WINDOW_WIDTH  = 1500
 WINDOW_HEIGHT = 950
 APP_NAME      = 'Battery Test System'
 APP_VERSION   = '1.0.0'
+
+# ── Company Logo ──────────────────────────────────────────────────────────────
+# Place your company logo as 'logo.png' in the same directory as main.py
+# Recommended size: 200x60 pixels (transparent background)
+# If file doesn't exist, app will work without logo
+LOGO_PATH     = 'logo.png'

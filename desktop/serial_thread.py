@@ -111,8 +111,8 @@ class SerialReadThread(QThread):
 
                 time.sleep(0.2)
 
-                # ── Basic info (every 5th cycle) ──────────────────────────────
-                if req_counter % 5 == 0:
+                # ── Basic info (every 2nd cycle = every 2 seconds) ────────────
+                if req_counter % 2 == 0:
                     response = self._send_request(
                         self.bms.get_basic_info_request(), 'basic_info'
                     )

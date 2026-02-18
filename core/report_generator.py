@@ -21,7 +21,7 @@ from reportlab.graphics.charts.lineplots import LinePlot
 from reportlab.graphics import renderPDF
 
 from core.battery_test import TestSession, TestResult, TestStatus
-from core.config import CELL_COLORS, APP_NAME, APP_VERSION
+from core.config import CELL_COLORS, APP_NAME, APP_VERSION, LOGO_PATH
 
 
 # ── CSV Report ────────────────────────────────────────────────────────────────
@@ -49,6 +49,7 @@ def generate_csv(session: TestSession) -> str:
         writer.writerow(['Override Reason', session.override_reason])
     writer.writerow(['Runtime', session.runtime_str])
     writer.writerow(['Storage Voltage (V)', f"{session.storage_voltage:.2f}"])
+    writer.writerow(['Discharge End Voltage (V)', f"{session.discharge_end_voltage:.2f}"])
     writer.writerow(['BMS Cycle Count', session.bms_cycle_count])
     writer.writerow([])
 
@@ -141,6 +142,17 @@ def generate_pdf(session: TestSession) -> bytes:
 
     # ── Page 1: Summary ───────────────────────────────────────────────────────
 
+    # Logo at top if available
+    import os
+    if os.path.exists(LOGO_PATH):
+        try:
+            from reportlab.platypus import Image
+            logo = Image(LOGO_PATH, width=2*inch, height=0.6*inch, kind='proportional')
+            story.append(logo)
+            story.append(Spacer(1, 0.1*inch))
+        except Exception as e:
+            print(f"⚠ Could not add logo to PDF: {e}")
+
     # Title
     story.append(Paragraph(APP_NAME, title_style))
     story.append(Paragraph(
@@ -180,7 +192,9 @@ def generate_pdf(session: TestSession) -> bytes:
         ['Rated Capacity',    f"{session.rated_capacity_ah:.1f} Ah  ({session.rated_capacity_ah*1000:.0f} mAh)",
          'Cycle Count (BMS)', str(session.bms_cycle_count)],
         ['Storage Voltage',   f"{session.storage_voltage:.2f} V",
-         'Pass Threshold',    f">= {session.pass_threshold_pct:.0f}%"],
+         'Discharge End',     f"{session.discharge_end_voltage:.2f} V"],
+        ['Pass Threshold',    f">= {session.pass_threshold_pct:.0f}%",
+         'Test Stopped By',   'BMS Protection (cell_uv_p)'],
     ]
     info_table = Table(info_data, colWidths=[1.5*inch, 2*inch, 1.5*inch, 2*inch])
     info_table.setStyle(TableStyle([
@@ -427,10 +441,15 @@ def _build_discharge_chart(session: TestSession) -> Drawing:
         chart.lines[i].strokeColor = colors.HexColor(hex_colors[i % len(hex_colors)])
         chart.lines[i].strokeWidth = 1.2
 
-    # Axes
+    # Axes with labels
     chart.xValueAxis.valueMin   = 0
     chart.xValueAxis.valueMax   = max(time_data) if time_data else 1
     chart.xValueAxis.labelTextFormat = '%d'
+    chart.xValueAxis.labels.fontName = 'Helvetica'
+    chart.xValueAxis.labels.fontSize = 9
+
+    chart.yValueAxis.labels.fontName = 'Helvetica'
+    chart.yValueAxis.labels.fontSize = 9
 
     live = [v for s in session.samples for v in s.voltages if v >= 2.0]
     chart.yValueAxis.valueMin = max(2.0, min(live) - 0.1) if live else 2.5
@@ -438,12 +457,40 @@ def _build_discharge_chart(session: TestSession) -> Drawing:
 
     drawing.add(chart)
 
-    # Storage voltage line
+    # Add axis titles manually (ReportLab LinePlot doesn't have built-in axis titles)
+    from reportlab.graphics.shapes import String
+
+    # X-axis label: "Time (s)"
+    x_label = String(
+        chart.x + chart.width / 2,
+        chart.y - 0.3 * inch,
+        'Time (s)',
+        textAnchor='middle',
+        fontSize=10,
+        fontName='Helvetica-Bold'
+    )
+    drawing.add(x_label)
+
+    # Y-axis label: "Voltage (V)" - rotated 90 degrees
+    y_label = String(
+        chart.x - 0.45 * inch,
+        chart.y + chart.height / 2,
+        'Voltage (V)',
+        textAnchor='middle',
+        fontSize=10,
+        fontName='Helvetica-Bold'
+    )
+    # Rotate label 90 degrees counterclockwise
+    from reportlab.graphics import transforms
+    y_label.transform = transforms.rotate(90)
+
+    # Storage voltage line (actually discharge end voltage for test)
     x_start = chart.x
     x_end   = chart.x + chart.width
     if live:
+        discharge_end = session.discharge_end_voltage
         y_range  = chart.yValueAxis.valueMax - chart.yValueAxis.valueMin
-        y_ratio  = (session.storage_voltage - chart.yValueAxis.valueMin) / y_range
+        y_ratio  = (discharge_end - chart.yValueAxis.valueMin) / y_range
         y_pos    = chart.y + (y_ratio * chart.height)
         line     = Line(x_start, y_pos, x_end, y_pos)
         line.strokeColor = colors.HexColor('#e67e22')
