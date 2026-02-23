@@ -16,8 +16,9 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
                                   TableStyle, HRFlowable, PageBreak)
-from reportlab.graphics.shapes import Drawing, Line
+from reportlab.graphics.shapes import Drawing, Line, String
 from reportlab.graphics.charts.lineplots import LinePlot
+from reportlab.graphics.charts.legends import Legend
 from reportlab.graphics import renderPDF
 
 from core.battery_test import TestSession, TestResult, TestStatus
@@ -142,21 +143,20 @@ def generate_pdf(session: TestSession) -> bytes:
 
     # ── Page 1: Summary ───────────────────────────────────────────────────────
 
-    # Logo at top if available
     import os
     if os.path.exists(LOGO_PATH):
         try:
             from reportlab.platypus import Image
-            logo = Image(LOGO_PATH, width=2*inch, height=0.6*inch, kind='proportional')
+            logo = Image(LOGO_PATH, width=3*inch, height=1*inch, kind='proportional')
             story.append(logo)
-            story.append(Spacer(1, 0.1*inch))
+            story.append(Spacer(1, 0.15*inch))
         except Exception as e:
             print(f"⚠ Could not add logo to PDF: {e}")
 
     # Title
-    story.append(Paragraph(APP_NAME, title_style))
+    story.append(Paragraph("Battery Test Report", title_style))
     story.append(Paragraph(
-        f"Battery Discharge Test Report  |  v{APP_VERSION}",
+        f"Battery Test System  |  v{APP_VERSION}",
         small_style
     ))
     story.append(HRFlowable(width='100%', thickness=2,
@@ -244,7 +244,6 @@ def generate_pdf(session: TestSession) -> bytes:
         ('BOTTOMPADDING',(0,0), (-1,-1), 5),
         ('LEFTPADDING',  (0,0), (-1,-1), 8),
     ]))
-    # Color pass/fail cell
     for row_idx, row in enumerate(cap_data):
         if row[2] == 'PASS':
             cap_table.setStyle(TableStyle([
@@ -266,18 +265,16 @@ def generate_pdf(session: TestSession) -> bytes:
             f"<b>Override Reason:</b> {session.override_reason}", normal_style
         ))
 
-    # Temperatures
     if session.bms_temperatures:
         story.append(Spacer(1, 0.1*inch))
         temps = ', '.join([f"{t:.1f}°C" for t in session.bms_temperatures])
         story.append(Paragraph(f"<b>BMS Temperatures:</b> {temps}", normal_style))
 
-    # Health events
     if session.health_events:
         story.append(Spacer(1, 0.15*inch))
         story.append(Paragraph("Health Events During Test", h1_style))
         event_data = [['Time (s)', 'Type', 'Cell', 'Voltage', 'Description']]
-        for ev in session.health_events[:20]:    # Max 20 events on PDF
+        for ev in session.health_events[:20]:
             event_data.append([
                 f"{ev['time']:.1f}",
                 ev['type'],
@@ -313,9 +310,10 @@ def generate_pdf(session: TestSession) -> bytes:
     else:
         story.append(Paragraph("Not enough data to generate chart.", normal_style))
 
-    story.append(Spacer(1, 0.2*inch))
+    # Clean break to Page 3 for the Summary Table
+    story.append(PageBreak())
 
-    # ── Page 2 cont: Per-Cell Table ───────────────────────────────────────────
+    # ── Page 3: Per-Cell Table ────────────────────────────────────────────────
 
     story.append(Paragraph("Per-Cell Voltage Summary", h1_style))
 
@@ -323,9 +321,7 @@ def generate_pdf(session: TestSession) -> bytes:
         cell_count  = session.cell_count
         cell_data_t = session.cell_data
 
-        # Min, max, start, end per cell
-        per_cell_data = [['Cell', 'Start (V)', 'End (V)', 'Min (V)', 'Max (V)',
-                           'Drop (V)', 'Status']]
+        per_cell_data = [['Cell', 'Start (V)', 'End (V)', 'Min (V)', 'Max (V)', 'Drop (V)']]
         for i in range(cell_count):
             col    = cell_data_t[i]
             start  = col[0]
@@ -333,13 +329,6 @@ def generate_pdf(session: TestSession) -> bytes:
             mn     = min(col)
             mx     = max(col)
             drop   = start - end
-            status = 'OK'
-            if end < 2.0:
-                status = 'DEAD'
-            elif end < session.chemistry_config['cell_fail_voltage']:
-                status = 'FAIL'
-            elif drop > 0.5:
-                status = 'WEAK'
 
             per_cell_data.append([
                 f"Cell {i+1}",
@@ -347,12 +336,11 @@ def generate_pdf(session: TestSession) -> bytes:
                 f"{end:.3f}",
                 f"{mn:.3f}",
                 f"{mx:.3f}",
-                f"{drop:.3f}",
-                status,
+                f"{drop:.3f}"
             ])
 
-        cell_table = Table(per_cell_data,
-                           colWidths=[0.7*inch]*7)
+        # Adjusted colWidths slightly to balance the 6 columns nicely across the page
+        cell_table = Table(per_cell_data, colWidths=[1.1*inch]*6)
         cell_table.setStyle(TableStyle([
             ('FONTNAME',     (0,0), (-1,0),  'Helvetica-Bold'),
             ('FONTSIZE',     (0,0), (-1,-1), 8),
@@ -361,29 +349,9 @@ def generate_pdf(session: TestSession) -> bytes:
             ('ROWBACKGROUNDS',(0,1),(-1,-1), [colors.white, colors.HexColor('#f8f9fa')]),
             ('GRID',         (0,0), (-1,-1), 0.5, colors.HexColor('#cccccc')),
             ('ALIGN',        (0,0), (-1,-1), 'CENTER'),
-            ('TOPPADDING',   (0,0), (-1,-1), 4),
-            ('BOTTOMPADDING',(0,0), (-1,-1), 4),
+            ('TOPPADDING',   (0,0), (-1,-1), 6),
+            ('BOTTOMPADDING',(0,0), (-1,-1), 6),
         ]))
-
-        # Color status column
-        for row_idx, row in enumerate(per_cell_data[1:], start=1):
-            status = row[6]
-            if status == 'OK':
-                bg = colors.HexColor('#eafaf1')
-                tc = colors.HexColor('#27ae60')
-            elif status in ('DEAD', 'FAIL'):
-                bg = colors.HexColor('#fdedec')
-                tc = colors.HexColor('#e74c3c')
-            elif status == 'WEAK':
-                bg = colors.HexColor('#fef9e7')
-                tc = colors.HexColor('#f39c12')
-            else:
-                continue
-            cell_table.setStyle(TableStyle([
-                ('BACKGROUND', (6,row_idx), (6,row_idx), bg),
-                ('TEXTCOLOR',  (6,row_idx), (6,row_idx), tc),
-                ('FONTNAME',   (6,row_idx), (6,row_idx), 'Helvetica-Bold'),
-            ]))
 
         story.append(cell_table)
 
@@ -410,92 +378,186 @@ def get_pdf_filename(session: TestSession) -> str:
 # ── Chart Builder ─────────────────────────────────────────────────────────────
 
 def _build_discharge_chart(session: TestSession) -> Drawing:
-    """Build a ReportLab LinePlot of the discharge curves"""
-    width  = 7.0 * inch
-    height = 3.5 * inch
+    # 1. Page dimensions. Height reduced to 8.0" to perfectly fit on Page 2
+    # without forcing a page break.
+    page_width = 7.0 * inch
+    page_height = 8.0 * inch
 
-    drawing = Drawing(width, height)
-    chart   = LinePlot()
-    chart.x = 0.6 * inch
-    chart.y = 0.4 * inch
-    chart.width  = width  - 1.0 * inch
-    chart.height = height - 0.6 * inch
+    # 2. Logical dimensions of our sideways graph
+    logical_width = 8.0 * inch
+    logical_height = 7.0 * inch
 
-    time_data  = session.time_data
-    cell_data  = session.cell_data
+    drawing = Drawing(page_width, page_height)
+
+    from reportlab.graphics.shapes import Group
+    g = Group()
+
+    # Translate origin to the TOP-LEFT of the portrait box, and rotate -90 degrees.
+    # This places the legend on the RIGHT side of the portrait page, and
+    # allows the graph to be read naturally by turning the page counter-clockwise.
+    g.translate(0, page_height)
+    g.rotate(-90)
+
+    from reportlab.graphics.charts.lineplots import LinePlot
+    chart = LinePlot()
+    chart.x = 0.8 * inch
+    chart.y = 0.5 * inch
+    chart.width = logical_width - 1.6 * inch
+    chart.height = logical_height - 1.5 * inch
+
+    time_data = session.time_data
+    cell_data = session.cell_data
     cell_count = session.cell_count
 
-    # Subsample to max 200 points for readability
-    step = max(1, len(time_data) // 200)
-    t_sub = time_data[::step]
+    time_hours = [t / 3600.0 for t in time_data]
+    step = max(1, len(time_hours) // 200)
+    t_sub = time_hours[::step]
 
     chart.data = []
     hex_colors = CELL_COLORS[:cell_count]
 
     for i in range(cell_count):
-        col    = cell_data[i]
-        v_sub  = col[::step]
+        col = cell_data[i]
+        v_sub = col[::step]
         points = list(zip(t_sub, v_sub))
         chart.data.append(points)
-
         chart.lines[i].strokeColor = colors.HexColor(hex_colors[i % len(hex_colors)])
-        chart.lines[i].strokeWidth = 1.2
+        chart.lines[i].strokeWidth = 1.5
 
-    # Axes with labels
-    chart.xValueAxis.valueMin   = 0
-    chart.xValueAxis.valueMax   = max(time_data) if time_data else 1
-    chart.xValueAxis.labelTextFormat = '%d'
+    chart.xValueAxis.valueMin = 0
+    chart.xValueAxis.valueMax = max(time_hours) if time_hours else 1
+    chart.xValueAxis.labelTextFormat = '%.2f'
     chart.xValueAxis.labels.fontName = 'Helvetica'
     chart.xValueAxis.labels.fontSize = 9
 
+    live = [v for s in session.samples for v in s.voltages if v >= 2.0]
+    chart.yValueAxis.valueMin = max(2.0, min(live) - 0.1) if live else 2.5
+    chart.yValueAxis.valueMax = max(live) + 0.3 if live else 4.3
     chart.yValueAxis.labels.fontName = 'Helvetica'
     chart.yValueAxis.labels.fontSize = 9
 
-    live = [v for s in session.samples for v in s.voltages if v >= 2.0]
-    chart.yValueAxis.valueMin = max(2.0, min(live) - 0.1) if live else 2.5
-    chart.yValueAxis.valueMax = max(live) + 0.05 if live else 4.3
+    g.add(chart)
 
-    drawing.add(chart)
+    current_data = [s.current_ma / 1000.0 for s in session.samples]
+    current_sub = current_data[::step]
 
-    # Add axis titles manually (ReportLab LinePlot doesn't have built-in axis titles)
-    from reportlab.graphics.shapes import String
+    voltage_range = chart.yValueAxis.valueMax - chart.yValueAxis.valueMin
+    current_min, current_max = -60, 15
+    current_range = current_max - current_min
 
-    # X-axis label: "Time (s)"
+    current_mapped = []
+    for curr in current_sub:
+        normalized = (curr - current_min) / current_range
+        mapped_v = chart.yValueAxis.valueMin + (normalized * voltage_range)
+        current_mapped.append(mapped_v)
+
+    current_points = list(zip(t_sub, current_mapped))
+
+    current_idx = len(chart.data)
+    chart.data.append(current_points)
+    chart.lines[current_idx].strokeColor = colors.HexColor('#2c3e50')
+    chart.lines[current_idx].strokeWidth = 3
+
+    from reportlab.graphics.shapes import String, Line as ShapeLine
+
+    # X-Axis label
     x_label = String(
         chart.x + chart.width / 2,
-        chart.y - 0.3 * inch,
-        'Time (s)',
+        chart.y - 0.45 * inch,
+        'Time (hours)',
         textAnchor='middle',
-        fontSize=10,
+        fontSize=11,
         fontName='Helvetica-Bold'
     )
-    drawing.add(x_label)
+    g.add(x_label)
 
-    # Y-axis label: "Voltage (V)" - rotated 90 degrees
-    y_label = String(
-        chart.x - 0.45 * inch,
-        chart.y + chart.height / 2,
-        'Voltage (V)',
-        textAnchor='middle',
-        fontSize=10,
-        fontName='Helvetica-Bold'
-    )
-    # Rotate label 90 degrees counterclockwise
-    from reportlab.graphics import transforms
-    y_label.transform = transforms.rotate(90)
+    # HELPER: Because the main graph is rotated -90 degrees, applying a +90 degree
+    # rotation to the text here cancels it out, forcing the text to render perfectly
+    # horizontal when viewing the standard portrait PDF page.
+    def add_portrait_horizontal_label(x_pos, y_pos, text):
+        tg = Group()
+        tg.translate(x_pos, y_pos)
+        tg.rotate(90)
+        tg.add(String(0, 0, text, textAnchor='middle', fontSize=11, fontName='Helvetica-Bold'))
+        g.add(tg)
 
-    # Storage voltage line (actually discharge end voltage for test)
-    x_start = chart.x
-    x_end   = chart.x + chart.width
+    # Left Axis Label (Voltage)
+    add_portrait_horizontal_label(0.15 * inch, chart.y + chart.height / 2, 'Voltage (V)')
+
+    # Right Axis Label (Current)
+    right_x = chart.x + chart.width
+    add_portrait_horizontal_label(right_x + 0.5 * inch, chart.y + chart.height / 2, 'Current (A)')
+
+    # Right Axis Ticks
+    for curr_val in [0, -15, -30, -45, -60]:
+        y_frac = (curr_val - current_min) / current_range
+        y_pos = chart.y + y_frac * chart.height
+
+        tick = ShapeLine(
+            right_x,
+            y_pos,
+            right_x + 0.08 * inch,
+            y_pos
+        )
+        tick.strokeColor = colors.black
+        tick.strokeWidth = 0.5
+        g.add(tick)
+
+        marker = String(
+            right_x + 0.12 * inch,
+            y_pos - 3,
+            f'{curr_val}',
+            textAnchor='start',
+            fontSize=8,
+            fontName='Helvetica'
+        )
+        g.add(marker)
+
+    discharge_end = session.discharge_end_voltage
     if live:
-        discharge_end = session.discharge_end_voltage
-        y_range  = chart.yValueAxis.valueMax - chart.yValueAxis.valueMin
-        y_ratio  = (discharge_end - chart.yValueAxis.valueMin) / y_range
-        y_pos    = chart.y + (y_ratio * chart.height)
-        line     = Line(x_start, y_pos, x_end, y_pos)
+        y_frac = (discharge_end - chart.yValueAxis.valueMin) / voltage_range
+        y_pos = chart.y + y_frac * chart.height
+
+        line = ShapeLine(chart.x, y_pos, right_x, y_pos)
         line.strokeColor = colors.HexColor('#e67e22')
-        line.strokeWidth = 1.5
-        line.strokeDashArray = [4, 3]
-        drawing.add(line)
+        line.strokeWidth = 2
+        line.strokeDashArray = [6, 3]
+        g.add(line)
+
+        discharge_label = String(
+            right_x - 0.3 * inch,
+            y_pos + 4,
+            f'Min {discharge_end}V',
+            textAnchor='end',
+            fontSize=9,
+            fontName='Helvetica',
+            fillColor=colors.HexColor('#e67e22')
+        )
+        g.add(discharge_label)
+
+    # Legend
+    from reportlab.graphics.charts.legends import Legend
+    legend = Legend()
+    legend.fontName = 'Helvetica'
+    legend.fontSize = 8
+    legend.x = chart.x
+    legend.y = chart.y + chart.height + 0.6 * inch
+    legend.boxAnchor = 'nw'
+    legend.columnMaximum = 2
+    legend.deltax = 45
+    legend.dx = 8
+    legend.dy = 8
+    legend.dxTextSpace = 4
+
+    legend_items = []
+    for i in range(cell_count):
+        legend_items.append((colors.HexColor(hex_colors[i % len(hex_colors)]), f"C{i + 1}"))
+    legend_items.append((colors.HexColor('#2c3e50'), "Current"))
+    legend.colorNamePairs = legend_items
+
+    g.add(legend)
+    drawing.add(g)
 
     return drawing
+
+

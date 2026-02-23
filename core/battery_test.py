@@ -76,6 +76,10 @@ class TestSession:
     # Raw data (recorded every second, full discharge)
     samples:             List[CellSample] = field(default_factory=list)
 
+    # Moving average buffers for smoothing (last 5 samples)
+    voltage_buffer:      List[List[float]] = field(default_factory=list)  # [[v1,v2,...,v14], ...]
+    current_buffer:      List[float] = field(default_factory=list)         # [i1, i2, i3, i4, i5]
+
     # Capacity (calculated independently of BMS)
     calculated_capacity_ah: float = 0.0
     last_current_ma:         float = 0.0
@@ -97,7 +101,13 @@ class TestSession:
 
     @property
     def storage_voltage(self):
+        """Long-term storage voltage (not used for test end)"""
         return self.chemistry_config['storage_voltage']
+
+    @property
+    def discharge_end_voltage(self):
+        """Test discharge endpoint - wait for BMS protection flag"""
+        return self.chemistry_config.get('discharge_end_voltage', 3.00)
 
     @property
     def runtime_seconds(self):
@@ -220,7 +230,10 @@ class BatteryTestEngine:
     def run_pre_check(self, voltages: List[float]) -> PreCheckResult:
         """
         Run pre-test checks before allowing discharge to start.
-        Returns a PreCheckResult with pass/fail per check.
+        - Cell count check uses ALL voltages (including dead cells)
+        - Charged and balance checks use LIVE cells only (>= 2.0V)
+        - Dead cells are a WARNING, not a blocker
+        - Min start voltage is per-chemistry
         """
         result = PreCheckResult()
 
@@ -228,49 +241,67 @@ class BatteryTestEngine:
             result.messages.append("❌ No voltage data received from BMS")
             return result
 
-        chemistry = BATTERY_CHEMISTRIES.get(
-            self.session.chemistry if self.session else DEFAULT_CHEMISTRY,
-            BATTERY_CHEMISTRIES[DEFAULT_CHEMISTRY]
-        )
-
-        # Live cells only (ignore dead/disconnected)
-        live = [v for v in voltages if v >= 2.0]
-        result.cell_count = len(live)
-
-        # ── Check 1: All cells found ──────────────────────────────────────────
         from core.config import NUMBER_OF_CELLS
-        result.all_cells_found = (len(live) == NUMBER_OF_CELLS)
-        if result.all_cells_found:
-            result.messages.append(f"✅ All {NUMBER_OF_CELLS} cells detected")
-        else:
-            result.messages.append(
-                f"❌ Expected {NUMBER_OF_CELLS} cells, found {len(live)}"
-            )
 
-        # ── Check 2: All cells fully charged ─────────────────────────────────
-        min_v = min(live) if live else 0
-        max_v = max(live) if live else 0
-        result.min_voltage = min_v
-        result.max_voltage = max_v
-        result.cells_charged = (min_v >= MIN_START_VOLTAGE)
+        # Get chemistry config for this session
+        chem_key = self.session.chemistry if self.session else DEFAULT_CHEMISTRY
+        chemistry = BATTERY_CHEMISTRIES.get(chem_key, BATTERY_CHEMISTRIES[DEFAULT_CHEMISTRY])
+
+        # Use per-chemistry min start voltage
+        min_start = chemistry.get('min_start_voltage', MIN_START_VOLTAGE)
+
+        # Separate live and dead cells
+        live      = [v for v in voltages if v >= 2.0]
+        dead_idxs = [i + 1 for i, v in enumerate(voltages) if v < 2.0]
+
+        # cell_count = total cells reported (including dead)
+        result.cell_count = len(voltages)
+
+        # ── Check 1: Total cell count matches expected ────────────────────────
+        # Dead cells still count - they are physically present.
+        # A dead cell is a WARNING not a blocker.
+        result.all_cells_found = (len(voltages) == NUMBER_OF_CELLS)
+        if not result.all_cells_found:
+            result.messages.append(
+                f"❌ Expected {NUMBER_OF_CELLS} cells total, got {len(voltages)}"
+            )
+        elif dead_idxs:
+            result.messages.append(
+                f"⚠ {len(dead_idxs)} dead cell(s) at position(s): {dead_idxs} — test allowed"
+            )
+        else:
+            result.messages.append(f"✅ All {NUMBER_OF_CELLS} cells detected")
+
+        # ── Check 2: Live cells are charged (above storage voltage) ───────────
+        # Uses LIVE cells only — dead cell voltage never affects this check
+        min_v = min(live) if live else 0.0
+        max_v = max(live) if live else 0.0
+        result.min_voltage   = min_v
+        result.max_voltage   = max_v
+        result.cells_charged = (min_v >= min_start)
         if result.cells_charged:
             result.messages.append(
-                f"✅ All cells charged (min: {min_v:.3f}V >= {MIN_START_VOLTAGE}V)"
+                f"✅ Live cells charged (min: {min_v:.3f}V >= {min_start:.2f}V)"
             )
         else:
             result.messages.append(
-                f"❌ Cell(s) not fully charged (min: {min_v:.3f}V < {MIN_START_VOLTAGE}V)"
+                f"❌ Live cell(s) below start threshold "
+                f"(min: {min_v:.3f}V < {min_start:.2f}V)"
             )
 
-        # ── Check 3: Cell balance ─────────────────────────────────────────────
-        spread = max_v - min_v if live else 0
-        result.spread = spread
+        # ── Check 3: Live cell balance ────────────────────────────────────────
+        # Uses LIVE cells only — dead cell voltage never affects spread
+        spread         = max_v - min_v if live else 0.0
+        result.spread  = spread
         result.cells_balanced = (spread <= CELL_IMBALANCE_WARNING_V)
         if result.cells_balanced:
-            result.messages.append(f"✅ Cells balanced (spread: {spread:.3f}V)")
+            result.messages.append(
+                f"✅ Live cells balanced (spread: {spread:.3f}V)"
+            )
         else:
             result.messages.append(
-                f"❌ Cells unbalanced (spread: {spread:.3f}V > {CELL_IMBALANCE_WARNING_V}V)"
+                f"❌ Live cells unbalanced "
+                f"(spread: {spread:.3f}V > {CELL_IMBALANCE_WARNING_V}V)"
             )
 
         return result
@@ -278,27 +309,50 @@ class BatteryTestEngine:
     # ── Data Recording ────────────────────────────────────────────────────────
 
     def record_voltage_sample(self, voltages: List[float], current_ma: float = 0.0):
-        """Record one second of data"""
+        """
+        Record one second of data with 5-sample moving average smoothing.
+        Raw data goes into buffer, averaged data goes into samples.
+        """
         if not self.session or self.session.status != TestStatus.TESTING:
             return
 
+        # Add raw data to buffers
+        self.session.voltage_buffer.append(voltages.copy())
+        self.session.current_buffer.append(current_ma)
+
+        # Keep only last 5 samples in buffers
+        if len(self.session.voltage_buffer) > 5:
+            self.session.voltage_buffer.pop(0)
+        if len(self.session.current_buffer) > 5:
+            self.session.current_buffer.pop(0)
+
+        # Calculate moving averages
+        num_cells = len(voltages)
+        avg_voltages = []
+        for cell_idx in range(num_cells):
+            cell_values = [buf[cell_idx] for buf in self.session.voltage_buffer]
+            avg_voltages.append(sum(cell_values) / len(cell_values))
+
+        avg_current = sum(self.session.current_buffer) / len(self.session.current_buffer)
+
+        # Store averaged sample
         timestamp = time.time() - self.session.start_time
 
         sample = CellSample(
             timestamp=timestamp,
-            voltages=voltages,
-            current_ma=current_ma,
+            voltages=avg_voltages,
+            current_ma=avg_current,
         )
         self.session.samples.append(sample)
 
-        # Update capacity calculation
-        self._update_capacity(current_ma)
+        # Update capacity calculation (use averaged current)
+        self._update_capacity(avg_current)
 
-        # Check health
-        self._check_health(voltages, timestamp)
+        # Check health (use averaged voltages)
+        self._check_health(avg_voltages, timestamp)
 
-        # Check if storage voltage reached
-        self._check_storage_voltage(voltages)
+        # Note: Test stops when BMS triggers cell_uv_p protection flag
+        # No automatic voltage-based stop here
 
     def update_bms_info(self, info: dict):
         """Update BMS-reported info (separate from voltage samples)"""
@@ -373,37 +427,30 @@ class BatteryTestEngine:
                     'message': f"Cell {i+1} below {chemistry['cell_fail_voltage']}V"
                 })
 
-    def _check_storage_voltage(self, voltages: List[float]) -> bool:
-        """Check if average live cell voltage has reached storage voltage"""
-        if not self.session:
-            return False
-
-        live = [v for v in voltages if v >= 2.5]
-        if not live:
-            return False
-
-        avg_v = sum(live) / len(live)
-        if avg_v <= self.session.storage_voltage:
-            self.stop_test()
-            return True
-        return False
-
     # ── Health Status for UI ──────────────────────────────────────────────────
 
     def get_current_health_status(self, voltages: List[float]) -> dict:
         """
         Return current health status dict for UI display.
+        Checks (in order):
+          1. Dead cells (< 2.0V)
+          2. Cell 0.5V from average (imbalance)
+          3. Spread warning (> 50mV but < 500mV)
+          4. Cell below chemistry fail voltage
         """
         if not voltages:
             return {'overall': 'UNKNOWN', 'issues': []}
 
         live = [v for v in voltages if v >= 2.0]
-        if not live:
-            return {'overall': 'UNKNOWN', 'issues': ['No live cells']}
+        dead = [(i + 1, v) for i, v in enumerate(voltages) if v < 2.0]
 
-        avg_v = sum(live) / len(live)
-        max_v = max(live)
-        min_v = min(live)
+        if not live:
+            return {'overall': 'UNKNOWN', 'issues': [{'type': 'DEAD_CELL',
+                    'message': 'No live cells detected', 'severity': 'HIGH'}]}
+
+        avg_v  = sum(live) / len(live)
+        max_v  = max(live)
+        min_v  = min(live)
         spread = max_v - min_v
 
         issues = []
@@ -412,27 +459,36 @@ class BatteryTestEngine:
             BATTERY_CHEMISTRIES[DEFAULT_CHEMISTRY]
         )
 
-        # Imbalance check (0.5V from average)
+        # ── Check 1: Dead cells ───────────────────────────────────────────────
+        if dead:
+            cell_info = ', '.join([f"Cell {c}: {v:.3f}V" for c, v in dead])
+            issues.append({
+                'type':     'DEAD_CELL',
+                'message':  f"Dead cell(s) detected — {cell_info}",
+                'severity': 'HIGH'
+            })
+
+        # ── Check 2: Imbalance (0.5V from average, live cells only) ──────────
         imbalanced = [
             i + 1 for i, v in enumerate(voltages)
             if v >= 2.0 and abs(v - avg_v) >= CELL_IMBALANCE_ALERT_V
         ]
         if imbalanced:
             issues.append({
-                'type': 'IMBALANCE',
-                'message': f"Cell(s) {imbalanced} are 0.5V+ from average",
+                'type':     'IMBALANCE',
+                'message':  f"Cell(s) {imbalanced} are 0.5V+ from average",
                 'severity': 'HIGH'
             })
 
-        # Spread warning
+        # ── Check 3: Spread warning ───────────────────────────────────────────
         if CELL_IMBALANCE_WARNING_V < spread < CELL_IMBALANCE_ALERT_V:
             issues.append({
-                'type': 'SPREAD_WARNING',
-                'message': f"Voltage spread: {spread:.3f}V",
+                'type':     'SPREAD_WARNING',
+                'message':  f"Voltage spread: {spread:.3f}V",
                 'severity': 'MEDIUM'
             })
 
-        # Critical voltage
+        # ── Check 4: Critical voltage (live cells below fail voltage) ─────────
         critical = [
             (i + 1, v) for i, v in enumerate(voltages)
             if 2.0 <= v < chemistry['cell_fail_voltage']
@@ -440,8 +496,8 @@ class BatteryTestEngine:
         if critical:
             info = ', '.join([f"Cell {c}: {v:.3f}V" for c, v in critical])
             issues.append({
-                'type': 'CRITICAL_VOLTAGE',
-                'message': f"Below {chemistry['cell_fail_voltage']}V: {info}",
+                'type':     'CRITICAL_VOLTAGE',
+                'message':  f"Below {chemistry['cell_fail_voltage']}V: {info}",
                 'severity': 'HIGH'
             })
 

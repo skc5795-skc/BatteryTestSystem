@@ -58,12 +58,14 @@ class BatteryTestUI(QMainWindow):
         try:
             logo_label = QLabel()
             pixmap = QPixmap(LOGO_PATH)
-            # Scale to reasonable size if needed (max height 60px)
-            if pixmap.height() > 60:
-                pixmap = pixmap.scaledToHeight(60, Qt.TransformationMode.SmoothTransformation)
+            # Scale to 80px height - compact but still readable
+            if pixmap.height() > 80:
+                pixmap = pixmap.scaledToHeight(80, Qt.TransformationMode.SmoothTransformation)
             logo_label.setPixmap(pixmap)
             logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            logo_label.setStyleSheet("margin: 5px;")
+            # No margins at all - sits flush
+            logo_label.setContentsMargins(0, 0, 0, 0)
+
             return logo_label
         except Exception as e:
             print(f"⚠ Could not load logo: {e}")
@@ -249,8 +251,8 @@ class BatteryTestUI(QMainWindow):
             pos=discharge_end, angle=0,
             pen=pg.mkPen(color='#e67e22', width=2,
                          style=Qt.PenStyle.DashLine),
-            label=f"Discharge Limit: {discharge_end}V",
-            labelOpts={'color': '#e67e22', 'position': 0.07}
+            label=f"Min {discharge_end}V",
+            labelOpts={'color': '#e67e22', 'position': 0.05}
         )
         self.plot_widget.addItem(self.storage_line)
         self.plot_lines = []
