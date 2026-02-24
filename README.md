@@ -36,18 +36,6 @@ pip install -r requirements.txt
 ```bash
 python main.py
 ```
-
-### Web App (Streamlit)
-```bash
-python main.py --web
-# Then open http://localhost:8501 in any browser on this computer
-```
-
-Or directly:
-```bash
-streamlit run web/streamlit_app.py
-```
-
 ## Test Workflow
 
 1. **Connect BMS** — Select COM port, click Connect
@@ -59,7 +47,7 @@ streamlit run web/streamlit_app.py
 4. **Configure Test** — Chemistry, rated capacity, pass threshold
 5. **Start Test** — Button enabled only when pre-check passes
 6. **Discharge runs** — Graphs update every second, health monitored
-7. **Auto-stop** — When average cell voltage hits storage voltage
+7. **Auto-stop** — When BMS triggers (cell_uv_p) flag
 8. **Export Report** — CSV (raw data) or PDF (summary + graph + per-cell table)
 
 ## Battery Chemistries Supported
@@ -68,8 +56,7 @@ streamlit run web/streamlit_app.py
 |---------------|-----------|---------------|--------|
 | NMC Prismatic | 3.60V     | 4.15V         | 3.00V  |
 | LiPo          | 3.80V     | 4.15V         | 3.00V  |
-| LiFePO4       | 3.30V     | 3.55V         | 2.80V  |
-| NCA           | 3.67V     | 4.10V         | 3.00V  |
+
 
 ## Pass/Fail Criteria
 
@@ -81,6 +68,7 @@ streamlit run web/streamlit_app.py
 
 A-Warrior General Protocol V4 — RS485/UART at 9600 baud  
 Commands used: `0x03` (basic info), `0x04` (cell voltages)
+Read BMS_PROTOCOL_README for details,
 
 ## Serial Number Format
 

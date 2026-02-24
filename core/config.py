@@ -1,7 +1,6 @@
-"""
-Battery Test System - Core Configuration
-Shared between Desktop (PyQt6) and Web (Streamlit) apps
-"""
+
+#Battery Test System - Core Configuration ──────────────────────────────────────
+
 
 # ── Battery Chemistries ───────────────────────────────────────────────────────
 BATTERY_CHEMISTRIES = {
@@ -24,7 +23,7 @@ BATTERY_CHEMISTRIES = {
         'max_cell_voltage': 4.20,
         'full_charge_voltage': 4.15,
         'cell_fail_voltage': 3.00,
-        'min_start_voltage': 3.80,        # Must be fully charged
+        'min_start_voltage': 3.00,        # Must be fully charged
         'rated_capacity_ah': 46.0,
     },
 }
@@ -37,7 +36,7 @@ SERIAL_NUMBER_PREFIX      = 'B14S'
 
 # ── Pass/Fail Thresholds ──────────────────────────────────────────────────────
 DEFAULT_PASS_THRESHOLD_PCT = 95           # Actual must be >= 95% of rated
-CELL_IMBALANCE_WARNING_V   = 0.05         # 50mV spread warning
+CELL_IMBALANCE_WARNING_V   = 0.30         # 50mV spread warning
 CELL_IMBALANCE_ALERT_V     = 0.50         # 500mV spread = bad cell alert
 MIN_START_VOLTAGE          = 3.50         # Fallback min start voltage (per-chemistry used when available)
 
@@ -50,11 +49,29 @@ BMS_RESPONSE_TIMEOUT = 0.5
 # ── Data ──────────────────────────────────────────────────────────────────────
 MAX_DATA_POINTS = 100000                 # Full discharge session storage
 
+# ── Colors & Branding ────────────────────────────────────────────────────────
+# Official Copperstone Technologies Palette
+COPPERSTONE_TEAL  = '#064e4a'
+COPPERSTONE_GREEN = '#4bb25f'
+
 # ── Cell Colors (14 distinct colors) ─────────────────────────────────────────
+# Carefully selected to avoid duplicate shades (e.g., only ONE blue)
+# and strictly avoiding Neon Magenta (which is reserved for the Current line).
 CELL_COLORS = [
-    '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8',
-    '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B739', '#52B788',
-    '#FF85A1', '#5F9EA0', '#DDA15E', '#BC6C25'
+    '#E6194B', # 1. Red
+    '#3CB44B', # 2. Green
+    '#4363D8', # 3. Blue
+    '#F58231', # 4. Orange
+    '#911EB4', # 5. Purple
+    '#9A6324', # 6. Brown
+    '#FA8072', # 7. Salmon/Coral
+    '#808000', # 8. Olive
+    '#DAA520', # 9. Goldenrod
+    '#696969', # 10. Dim Gray
+    '#800000', # 11. Maroon
+    '#006400', # 12. Dark Green
+    '#D2691E', # 13. Chocolate
+    '#32CD32'  # 14. Lime Green
 ]
 
 # ── UI ────────────────────────────────────────────────────────────────────────

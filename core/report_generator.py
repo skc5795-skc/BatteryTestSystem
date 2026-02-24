@@ -22,7 +22,7 @@ from reportlab.graphics.charts.legends import Legend
 from reportlab.graphics import renderPDF
 
 from core.battery_test import TestSession, TestResult, TestStatus
-from core.config import CELL_COLORS, APP_NAME, APP_VERSION, LOGO_PATH
+from core.config import CELL_COLORS, APP_NAME, APP_VERSION, LOGO_PATH, COPPERSTONE_TEAL, COPPERSTONE_GREEN
 
 
 # ── CSV Report ────────────────────────────────────────────────────────────────
@@ -39,12 +39,16 @@ def generate_csv(session: TestSession) -> str:
     writer.writerow(['Battery Test Report'])
     writer.writerow(['Generated', datetime.now().strftime('%Y-%m-%d %H:%M:%S')])
     writer.writerow(['Battery Serial', session.serial_number])
+    writer.writerow(['Tech Initials', session.tech_initials])
+    writer.writerow(['MFG Date', session.mfg_date])
+    writer.writerow(['Battery Age', session.battery_age])
     writer.writerow(['Chemistry', session.chemistry])
     writer.writerow(['Rated Capacity (Ah)', f"{session.rated_capacity_ah:.1f}"])
     writer.writerow(['Measured Capacity (Ah)', f"{session.calculated_capacity_ah:.4f}"])
     writer.writerow(['Measured Capacity (mAh)', f"{session.calculated_capacity_ah * 1000:.1f}"])
     writer.writerow(['Capacity (%)', f"{session.capacity_percent:.1f}"])
     writer.writerow(['Pass Threshold (%)', f"{session.pass_threshold_pct:.0f}"])
+    writer.writerow(['Test Stopped By', session.stop_reason])
     writer.writerow(['Result', session.result.value])
     if session.override_reason:
         writer.writerow(['Override Reason', session.override_reason])
@@ -111,14 +115,14 @@ def generate_pdf(session: TestSession) -> bytes:
         'CustomTitle',
         parent=styles['Title'],
         fontSize=22,
-        textColor=colors.HexColor('#1a1a2e'),
+        textColor=colors.HexColor(COPPERSTONE_TEAL),
         spaceAfter=6
     )
     h1_style = ParagraphStyle(
         'H1',
         parent=styles['Heading1'],
         fontSize=14,
-        textColor=colors.HexColor('#16213e'),
+        textColor=colors.HexColor(COPPERSTONE_TEAL),
         spaceBefore=14,
         spaceAfter=6
     )
@@ -130,9 +134,9 @@ def generate_pdf(session: TestSession) -> bytes:
         textColor=colors.grey
     )
 
-    # Result color
+    # Result color - Updated to Copperstone Green for Pass
     if session.result == TestResult.PASS:
-        result_color = colors.HexColor('#27ae60')
+        result_color = colors.HexColor(COPPERSTONE_GREEN)
         result_bg    = colors.HexColor('#eafaf1')
     elif session.result == TestResult.FAIL:
         result_color = colors.HexColor('#e74c3c')
@@ -156,11 +160,11 @@ def generate_pdf(session: TestSession) -> bytes:
     # Title
     story.append(Paragraph("Battery Test Report", title_style))
     story.append(Paragraph(
-        f"Battery Test System  |  v{APP_VERSION}",
+        f"{APP_NAME} | v{APP_VERSION}",
         small_style
     ))
     story.append(HRFlowable(width='100%', thickness=2,
-                             color=colors.HexColor('#1a1a2e')))
+                             color=colors.HexColor(COPPERSTONE_TEAL)))
     story.append(Spacer(1, 0.15*inch))
 
     # Result banner
@@ -184,17 +188,14 @@ def generate_pdf(session: TestSession) -> bytes:
     # Battery info table
     story.append(Paragraph("Battery Information", h1_style))
     date_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
     info_data = [
-        ['Battery Serial Number', session.serial_number,
-         'Test Date', date_str],
-        ['Chemistry', session.chemistry,
-         'Runtime', session.runtime_str],
-        ['Rated Capacity',    f"{session.rated_capacity_ah:.1f} Ah  ({session.rated_capacity_ah*1000:.0f} mAh)",
-         'Cycle Count (BMS)', str(session.bms_cycle_count)],
-        ['Storage Voltage',   f"{session.storage_voltage:.2f} V",
-         'Discharge End',     f"{session.discharge_end_voltage:.2f} V"],
-        ['Pass Threshold',    f">= {session.pass_threshold_pct:.0f}%",
-         'Test Stopped By',   'BMS Protection (cell_uv_p)'],
+        ['Battery Serial', session.serial_number, 'Test Date', date_str],
+        ['Chemistry', session.chemistry, 'MFG Date', session.mfg_date],
+        ['Rated Capacity', f"{session.rated_capacity_ah:.1f} Ah", 'Battery Age', session.battery_age],
+        ['Storage Voltage', f"{session.storage_voltage:.2f} V", 'Runtime', session.runtime_str],
+        ['Pass Threshold', f">= {session.pass_threshold_pct:.0f}%", 'Cycle Count (BMS)', str(session.bms_cycle_count)],
+        ['Tech Initials', session.tech_initials, 'Test Stopped By', session.stop_reason],
     ]
     info_table = Table(info_data, colWidths=[1.5*inch, 2*inch, 1.5*inch, 2*inch])
     info_table.setStyle(TableStyle([
@@ -202,8 +203,10 @@ def generate_pdf(session: TestSession) -> bytes:
         ('FONTSIZE',   (0,0), (-1,-1), 9),
         ('FONTNAME',   (0,0), (0,-1), 'Helvetica-Bold'),
         ('FONTNAME',   (2,0), (2,-1), 'Helvetica-Bold'),
-        ('BACKGROUND', (0,0), (0,-1), colors.HexColor('#eef2ff')),
-        ('BACKGROUND', (2,0), (2,-1), colors.HexColor('#eef2ff')),
+        ('BACKGROUND', (0,0), (0,-1), colors.HexColor(COPPERSTONE_TEAL)), # Updated Background
+        ('TEXTCOLOR',  (0,0), (0,-1), colors.white),                      # Updated Text Color
+        ('BACKGROUND', (2,0), (2,-1), colors.HexColor(COPPERSTONE_TEAL)), # Updated Background
+        ('TEXTCOLOR',  (2,0), (2,-1), colors.white),                      # Updated Text Color
         ('GRID',       (0,0), (-1,-1), 0.5, colors.HexColor('#cccccc')),
         ('TOPPADDING', (0,0), (-1,-1), 5),
         ('BOTTOMPADDING',(0,0),(-1,-1), 5),
@@ -235,9 +238,9 @@ def generate_pdf(session: TestSession) -> bytes:
         ('FONTNAME',     (0,0), (-1,0),  'Helvetica-Bold'),
         ('FONTNAME',     (0,1), (-1,-1), 'Helvetica'),
         ('FONTSIZE',     (0,0), (-1,-1), 9),
-        ('BACKGROUND',   (0,0), (-1,0),  colors.HexColor('#1a1a2e')),
+        ('BACKGROUND',   (0,0), (-1,0),  colors.HexColor(COPPERSTONE_TEAL)),
         ('TEXTCOLOR',    (0,0), (-1,0),  colors.white),
-        ('ROWBACKGROUNDS',(0,1),(-1,-1), [colors.white, colors.HexColor('#f8f9fa')]),
+        ('ROWBACKGROUNDS',(0,1),(-1,-1), [colors.white, colors.HexColor('#f2f9f8')]), # Very light teal alternating
         ('GRID',         (0,0), (-1,-1), 0.5, colors.HexColor('#cccccc')),
         ('ALIGN',        (2,0), (2,-1),  'CENTER'),
         ('TOPPADDING',   (0,0), (-1,-1), 5),
@@ -247,13 +250,11 @@ def generate_pdf(session: TestSession) -> bytes:
     for row_idx, row in enumerate(cap_data):
         if row[2] == 'PASS':
             cap_table.setStyle(TableStyle([
-                ('BACKGROUND', (2,row_idx), (2,row_idx), colors.HexColor('#eafaf1')),
-                ('TEXTCOLOR',  (2,row_idx), (2,row_idx), colors.HexColor('#27ae60')),
+                ('TEXTCOLOR',  (2,row_idx), (2,row_idx), colors.HexColor(COPPERSTONE_GREEN)),
                 ('FONTNAME',   (2,row_idx), (2,row_idx), 'Helvetica-Bold'),
             ]))
         elif row[2] == 'FAIL':
             cap_table.setStyle(TableStyle([
-                ('BACKGROUND', (2,row_idx), (2,row_idx), colors.HexColor('#fdedec')),
                 ('TEXTCOLOR',  (2,row_idx), (2,row_idx), colors.HexColor('#e74c3c')),
                 ('FONTNAME',   (2,row_idx), (2,row_idx), 'Helvetica-Bold'),
             ]))
@@ -267,8 +268,16 @@ def generate_pdf(session: TestSession) -> bytes:
 
     if session.bms_temperatures:
         story.append(Spacer(1, 0.1*inch))
-        temps = ', '.join([f"{t:.1f}°C" for t in session.bms_temperatures])
-        story.append(Paragraph(f"<b>BMS Temperatures:</b> {temps}", normal_style))
+        temps = session.bms_temperatures
+
+        if len(temps) == 3:
+            temp_str = f"Cells: {temps[0]:.1f}°C, {temps[1]:.1f}°C  |  MOS/BMS: {temps[2]:.1f}°C"
+        elif len(temps) == 2:
+            temp_str = f"Cells: {temps[0]:.1f}°C, {temps[1]:.1f}°C"
+        else:
+            temp_str = ', '.join([f"{t:.1f}°C" for t in temps])
+
+        story.append(Paragraph(f"<b>BMS Temperatures:</b> {temp_str}", normal_style))
 
     if session.health_events:
         story.append(Spacer(1, 0.15*inch))
@@ -287,9 +296,9 @@ def generate_pdf(session: TestSession) -> bytes:
         ev_table.setStyle(TableStyle([
             ('FONTNAME',     (0,0), (-1,0),  'Helvetica-Bold'),
             ('FONTSIZE',     (0,0), (-1,-1), 8),
-            ('BACKGROUND',   (0,0), (-1,0),  colors.HexColor('#1a1a2e')),
+            ('BACKGROUND',   (0,0), (-1,0),  colors.HexColor(COPPERSTONE_TEAL)),
             ('TEXTCOLOR',    (0,0), (-1,0),  colors.white),
-            ('ROWBACKGROUNDS',(0,1),(-1,-1), [colors.white, colors.HexColor('#f8f9fa')]),
+            ('ROWBACKGROUNDS',(0,1),(-1,-1), [colors.white, colors.HexColor('#f2f9f8')]),
             ('GRID',         (0,0), (-1,-1), 0.5, colors.HexColor('#cccccc')),
             ('TOPPADDING',   (0,0), (-1,-1), 4),
             ('BOTTOMPADDING',(0,0), (-1,-1), 4),
@@ -310,7 +319,6 @@ def generate_pdf(session: TestSession) -> bytes:
     else:
         story.append(Paragraph("Not enough data to generate chart.", normal_style))
 
-    # Clean break to Page 3 for the Summary Table
     story.append(PageBreak())
 
     # ── Page 3: Per-Cell Table ────────────────────────────────────────────────
@@ -339,14 +347,13 @@ def generate_pdf(session: TestSession) -> bytes:
                 f"{drop:.3f}"
             ])
 
-        # Adjusted colWidths slightly to balance the 6 columns nicely across the page
         cell_table = Table(per_cell_data, colWidths=[1.1*inch]*6)
         cell_table.setStyle(TableStyle([
             ('FONTNAME',     (0,0), (-1,0),  'Helvetica-Bold'),
             ('FONTSIZE',     (0,0), (-1,-1), 8),
-            ('BACKGROUND',   (0,0), (-1,0),  colors.HexColor('#1a1a2e')),
+            ('BACKGROUND',   (0,0), (-1,0),  colors.HexColor(COPPERSTONE_TEAL)),
             ('TEXTCOLOR',    (0,0), (-1,0),  colors.white),
-            ('ROWBACKGROUNDS',(0,1),(-1,-1), [colors.white, colors.HexColor('#f8f9fa')]),
+            ('ROWBACKGROUNDS',(0,1),(-1,-1), [colors.white, colors.HexColor('#f2f9f8')]),
             ('GRID',         (0,0), (-1,-1), 0.5, colors.HexColor('#cccccc')),
             ('ALIGN',        (0,0), (-1,-1), 'CENTER'),
             ('TOPPADDING',   (0,0), (-1,-1), 6),
@@ -378,12 +385,9 @@ def get_pdf_filename(session: TestSession) -> str:
 # ── Chart Builder ─────────────────────────────────────────────────────────────
 
 def _build_discharge_chart(session: TestSession) -> Drawing:
-    # 1. Page dimensions. Height reduced to 8.0" to perfectly fit on Page 2
-    # without forcing a page break.
     page_width = 7.0 * inch
     page_height = 8.0 * inch
 
-    # 2. Logical dimensions of our sideways graph
     logical_width = 8.0 * inch
     logical_height = 7.0 * inch
 
@@ -392,9 +396,6 @@ def _build_discharge_chart(session: TestSession) -> Drawing:
     from reportlab.graphics.shapes import Group
     g = Group()
 
-    # Translate origin to the TOP-LEFT of the portrait box, and rotate -90 degrees.
-    # This places the legend on the RIGHT side of the portrait page, and
-    # allows the graph to be read naturally by turning the page counter-clockwise.
     g.translate(0, page_height)
     g.rotate(-90)
 
@@ -455,12 +456,13 @@ def _build_discharge_chart(session: TestSession) -> Drawing:
 
     current_idx = len(chart.data)
     chart.data.append(current_points)
-    chart.lines[current_idx].strokeColor = colors.HexColor('#2c3e50')
+
+    # ── UPDATED TO NEON MAGENTA ──────────────────────────────────────────────
+    chart.lines[current_idx].strokeColor = colors.HexColor('#FF00FF')
     chart.lines[current_idx].strokeWidth = 3
 
     from reportlab.graphics.shapes import String, Line as ShapeLine
 
-    # X-Axis label
     x_label = String(
         chart.x + chart.width / 2,
         chart.y - 0.45 * inch,
@@ -471,9 +473,6 @@ def _build_discharge_chart(session: TestSession) -> Drawing:
     )
     g.add(x_label)
 
-    # HELPER: Because the main graph is rotated -90 degrees, applying a +90 degree
-    # rotation to the text here cancels it out, forcing the text to render perfectly
-    # horizontal when viewing the standard portrait PDF page.
     def add_portrait_horizontal_label(x_pos, y_pos, text):
         tg = Group()
         tg.translate(x_pos, y_pos)
@@ -481,14 +480,11 @@ def _build_discharge_chart(session: TestSession) -> Drawing:
         tg.add(String(0, 0, text, textAnchor='middle', fontSize=11, fontName='Helvetica-Bold'))
         g.add(tg)
 
-    # Left Axis Label (Voltage)
     add_portrait_horizontal_label(0.15 * inch, chart.y + chart.height / 2, 'Voltage (V)')
 
-    # Right Axis Label (Current)
     right_x = chart.x + chart.width
     add_portrait_horizontal_label(right_x + 0.5 * inch, chart.y + chart.height / 2, 'Current (A)')
 
-    # Right Axis Ticks
     for curr_val in [0, -15, -30, -45, -60]:
         y_frac = (curr_val - current_min) / current_range
         y_pos = chart.y + y_frac * chart.height
@@ -535,7 +531,6 @@ def _build_discharge_chart(session: TestSession) -> Drawing:
         )
         g.add(discharge_label)
 
-    # Legend
     from reportlab.graphics.charts.legends import Legend
     legend = Legend()
     legend.fontName = 'Helvetica'
@@ -543,21 +538,22 @@ def _build_discharge_chart(session: TestSession) -> Drawing:
     legend.x = chart.x
     legend.y = chart.y + chart.height + 0.6 * inch
     legend.boxAnchor = 'nw'
-    legend.columnMaximum = 2
-    legend.deltax = 45
-    legend.dx = 8
-    legend.dy = 8
-    legend.dxTextSpace = 4
+
+    # ── FIX FOR LEGEND SPACING & ALIGNMENT ────────────────────────────────────
+    legend.alignment = 'left' # Flips the order: Box on left, text closely on the right
+    legend.columnMaximum = 3  # Creates exactly 5 columns for 15 items, filling the width cleanly
+    legend.deltax = 60        # Width of each column block
+    legend.dx = 8             # Color box width
+    legend.dy = 8             # Color box height
+    legend.dxTextSpace = 5    # Tight gap between box and text
 
     legend_items = []
     for i in range(cell_count):
         legend_items.append((colors.HexColor(hex_colors[i % len(hex_colors)]), f"C{i + 1}"))
-    legend_items.append((colors.HexColor('#2c3e50'), "Current"))
+    legend_items.append((colors.HexColor('#FF00FF'), "Current"))
     legend.colorNamePairs = legend_items
 
     g.add(legend)
     drawing.add(g)
 
     return drawing
-
-
