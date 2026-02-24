@@ -213,8 +213,7 @@ class BatteryTestEngine:
         if not self.session:
             return
         self.session.end_time = time.time()
-        self.session.status   = TestStatus.COMPLETE
-        self.session.stop_reason = reason
+        self.session.status = TestStatus.COMPLETE
 
         # Auto pass/fail
         if self.session.result == TestResult.PENDING:
@@ -222,6 +221,8 @@ class BatteryTestEngine:
                 self.session.result = TestResult.PASS
             else:
                 self.session.result = TestResult.FAIL
+        if reason:
+            self.session.stop_reason = reason
 
     def abort_test(self, reason: str = 'Error / Disconnected'):
         """Abort the test due to error or user closing app"""

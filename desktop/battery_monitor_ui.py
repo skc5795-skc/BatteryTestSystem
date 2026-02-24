@@ -728,7 +728,7 @@ class BatteryTestUI(QMainWindow):
 
         color_map = {'NORMAL': COPPERSTONE_GREEN, 'WARNING': '#f39c12', 'ABNORMAL': '#e74c3c', 'UNKNOWN': 'gray'}
         overall = h['overall']
-        icon    = "✅" if overall == 'NORMAL' else "⚠"
+        icon = "✅" if overall == 'NORMAL' else "⚠"
         self.health_overall.setText(f"{icon} {overall}")
         self.health_overall.setStyleSheet(f"font-weight:bold; font-size:14px; color:{color_map.get(overall, 'gray')};")
 
@@ -760,8 +760,17 @@ class BatteryTestUI(QMainWindow):
             self.health_target.setText(f"Avg {avg:.3f}V → {avg - target:.3f}V above {target}V min")
             self.health_target.setStyleSheet(f"color:{COPPERSTONE_TEAL}; font-size:12px;")
         elif self.engine.session and self.engine.session.status == TestStatus.COMPLETE:
-            self.health_target.setText("✅ BMS protection triggered")
-            self.health_target.setStyleSheet(f"color:{COPPERSTONE_GREEN}; font-size:12px; font-weight:bold;")
+            # ── FIX: Check exactly WHY it stopped ─────────────────────────────
+            reason = self.engine.session.stop_reason
+            if "User" in reason or "Manual" in reason:
+                self.health_target.setText("⏹ Stopped manually by user")
+                self.health_target.setStyleSheet("color:#e74c3c; font-size:12px; font-weight:bold;")
+            elif "BMS" in reason:
+                self.health_target.setText("✅ BMS protection triggered")
+                self.health_target.setStyleSheet(f"color:{COPPERSTONE_GREEN}; font-size:12px; font-weight:bold;")
+            else:
+                self.health_target.setText(f"⏹ {reason}")
+                self.health_target.setStyleSheet("color:gray; font-size:12px; font-weight:bold;")
         else:
             self.health_target.setText("--")
             self.health_target.setStyleSheet("font-size:12px; color:gray;")
