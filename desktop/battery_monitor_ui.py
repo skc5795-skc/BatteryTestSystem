@@ -534,7 +534,7 @@ class BatteryTestUI(QMainWindow):
         root.addWidget(self._build_header())
 
         divider = QFrame()
-        divider.setFixedHeight(3)
+        divider.setFixedHeight(5)
         divider.setStyleSheet(
             f"background:{COPPERSTONE_ORANGE}; border:none; border-radius:2px;"
         )
@@ -586,7 +586,7 @@ class BatteryTestUI(QMainWindow):
         h1.addWidget(QLabel("Build ID:"))
         self.build_id_edit = QLineEdit()
         self.build_id_edit.setMaximumWidth(145)
-        self.build_id_edit.setPlaceholderText("Rover-12 / Outgoing PO")
+        self.build_id_edit.setPlaceholderText("Rover/Outgoing PO")
         self.build_id_edit.setToolTip(
             "Rover name or outgoing replacement PO. Report-folder integration "
             "will use this value in the reporting phase."
@@ -849,8 +849,8 @@ class BatteryTestUI(QMainWindow):
 
         self.current_line = pg.PlotDataItem(
             pen=pg.mkPen(
-                color="#FF00FF",
-                width=5,
+                color= COPPERSTONE_TEAL,
+                width=8,
                 style=Qt.PenStyle.SolidLine,
             ),
             name="Current (A)",

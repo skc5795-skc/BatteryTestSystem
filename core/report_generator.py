@@ -19,15 +19,18 @@ from reportlab.graphics.charts.legends import Legend
 from reportlab.graphics.charts.lineplots import LinePlot
 from reportlab.graphics.shapes import Drawing, Line, String
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import landscape, letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import (
+    BaseDocTemplate,
+    Frame,
     HRFlowable,
     Image,
+    NextPageTemplate,
     PageBreak,
+    PageTemplate,
     Paragraph,
-    SimpleDocTemplate,
     Spacer,
     Table,
     TableStyle,
@@ -42,6 +45,8 @@ from core.config import (
     COPPERSTONE_TEAL,
     LOGO_PATH,
 )
+
+COPPERSTONE_ORANGE = "#F4950D"
 
 
 def _attr(session: TestSession, name: str, default=None):
@@ -195,16 +200,55 @@ def _section_table(data: list[list[str]], widths: list[float], header: bool = Fa
 
 def generate_pdf(session: TestSession) -> bytes:
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
+
+    portrait_page_size = letter
+    landscape_page_size = landscape(letter)
+
+    left_margin = 0.75 * inch
+    right_margin = 0.75 * inch
+    top_margin = 0.65 * inch
+    bottom_margin = 0.65 * inch
+
+    # Keep the report information pages in portrait, but use a dedicated
+    # landscape page for the discharge graph.
+    doc = BaseDocTemplate(
         buffer,
-        pagesize=letter,
-        leftMargin=0.75 * inch,
-        rightMargin=0.75 * inch,
-        topMargin=0.65 * inch,
-        bottomMargin=0.65 * inch,
+        pagesize=portrait_page_size,
+        leftMargin=left_margin,
+        rightMargin=right_margin,
+        topMargin=top_margin,
+        bottomMargin=bottom_margin,
         title="Battery Test Report",
         author=APP_NAME,
     )
+
+    portrait_frame = Frame(
+        left_margin,
+        bottom_margin,
+        portrait_page_size[0] - left_margin - right_margin,
+        portrait_page_size[1] - top_margin - bottom_margin,
+        id="portrait_frame",
+    )
+    landscape_frame = Frame(
+        left_margin,
+        bottom_margin,
+        landscape_page_size[0] - left_margin - right_margin,
+        landscape_page_size[1] - top_margin - bottom_margin,
+        id="landscape_frame",
+    )
+
+    doc.addPageTemplates([
+        PageTemplate(
+            id="Portrait",
+            pagesize=portrait_page_size,
+            frames=[portrait_frame],
+        ),
+        PageTemplate(
+            id="Landscape",
+            pagesize=landscape_page_size,
+            frames=[landscape_frame],
+        ),
+    ])
 
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
@@ -232,31 +276,90 @@ def generate_pdf(session: TestSession) -> bytes:
 
     story = []
 
+    # App-style report header: teal banner, centred Copperstone logo, product
+    # name/version at the lower right, and a thin orange divider underneath.
+    logo_flowable = ""
     if LOGO_PATH and os.path.exists(LOGO_PATH):
         try:
-            logo = Image(LOGO_PATH, width=3 * inch, height=1 * inch, kind="proportional")
-            story.extend([logo, Spacer(1, 0.12 * inch)])
+            logo_flowable = Image(
+                LOGO_PATH,
+                width=3.1 * inch,
+                height=0.72 * inch,
+                kind="proportional",
+            )
         except Exception as exc:
-            print(f"Could not add logo to PDF: {exc}")
+            print(f"Could not add logo to PDF header: {exc}")
+            logo_flowable = ""
+
+    header_title_style = ParagraphStyle(
+        "HeaderTitle",
+        parent=normal_style,
+        fontName="Helvetica-Bold",
+        fontSize=10,
+        leading=12,
+        textColor=colors.white,
+        alignment=2,
+    )
+    header_table = Table(
+        [[
+            "",
+            logo_flowable,
+            Paragraph(
+                f"{escape(APP_NAME)} v{escape(APP_VERSION)}",
+                header_title_style,
+            ),
+        ]],
+        colWidths=[1.65 * inch, 3.70 * inch, 1.65 * inch],
+        rowHeights=[0.86 * inch],
+    )
+    header_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(COPPERSTONE_TEAL)),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (1, 0), (1, 0), "CENTER"),
+        ("ALIGN", (2, 0), (2, 0), "RIGHT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("BOX", (0, 0), (-1, -1), 0, colors.HexColor(COPPERSTONE_TEAL)),
+        # Thin orange divider attached directly to the teal header.
+        ("LINEBELOW", (0, 0), (-1, -1), 3, colors.HexColor(COPPERSTONE_ORANGE)),
+    ]))
+    story.append(header_table)
+    story.append(Spacer(1, 8))
 
     story.append(Paragraph("Battery Test Report", title_style))
-    story.append(Paragraph(f"{escape(APP_NAME)} | v{escape(APP_VERSION)}", small_style))
-    story.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor(COPPERSTONE_TEAL)))
-    story.append(Spacer(1, 0.15 * inch))
+    story.append(Spacer(1, 0.08 * inch))
 
     result_color, result_bg = _result_colours(session)
+    result_style = ParagraphStyle(
+        "Result",
+        parent=normal_style,
+        fontName="Helvetica-Bold",
+        fontSize=18,
+        leading=20,
+        textColor=result_color,
+        alignment=1,
+        spaceBefore=0,
+        spaceAfter=0,
+    )
     result_table = Table(
         [[Paragraph(
-            f"<b>TEST RESULT: {escape(_result_text(session))}</b>",
-            ParagraphStyle("Result", fontSize=18, textColor=result_color, alignment=1),
+            f"TEST RESULT: {escape(_result_text(session))}",
+            result_style,
         )]],
         colWidths=[7 * inch],
+        rowHeights=[0.62 * inch],
     )
     result_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), result_bg),
         ("BOX", (0, 0), (-1, -1), 1.5, result_color),
-        ("TOPPADDING", (0, 0), (-1, -1), 10),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
     ]))
     story.extend([result_table, Spacer(1, 0.12 * inch)])
 
@@ -362,6 +465,8 @@ def generate_pdf(session: TestSession) -> bytes:
             header=True,
         ))
 
+    # Switch only the discharge-curve page to landscape orientation.
+    story.append(NextPageTemplate("Landscape"))
     story.append(PageBreak())
     story.append(Paragraph("Discharge Curves", heading_style))
     story.append(Spacer(1, 0.08 * inch))
@@ -372,6 +477,8 @@ def generate_pdf(session: TestSession) -> bytes:
     else:
         story.append(Paragraph("Not enough data to generate chart.", normal_style))
 
+    # Return to portrait for the remaining report pages.
+    story.append(NextPageTemplate("Portrait"))
     story.append(PageBreak())
     story.append(Paragraph("Per-Cell Voltage Summary", heading_style))
 
@@ -621,12 +728,15 @@ class ReportAutoSaver:
 
 
 def _build_discharge_chart(session: TestSession) -> Drawing:
-    drawing = Drawing(7.0 * inch, 5.4 * inch)
+    # Sized for the landscape Letter page used by the graph section.
+    drawing = Drawing(9.25 * inch, 6.05 * inch)
+    drawing.hAlign = "CENTER"
+
     chart = LinePlot()
-    chart.x = 0.65 * inch
-    chart.y = 0.70 * inch
-    chart.width = 5.65 * inch
-    chart.height = 3.75 * inch
+    chart.x = 0.70 * inch
+    chart.y = 0.78 * inch
+    chart.width = 7.80 * inch
+    chart.height = 4.40 * inch
 
     time_data = list(_attr(session, "time_data", []) or [])
     cell_data = list(_attr(session, "cell_data", []) or [])
@@ -730,16 +840,20 @@ def _build_discharge_chart(session: TestSession) -> Drawing:
     if colour_pairs:
         legend = Legend()
         legend.fontName = "Helvetica"
-        legend.fontSize = 7
-        legend.x = chart.x
-        legend.y = chart.y + chart.height + 0.55 * inch
+        legend.fontSize = 8
+        legend.x = chart.x + 0.10 * inch
+        legend.y = chart.y + chart.height + 0.62 * inch
         legend.boxAnchor = "nw"
         legend.alignment = "left"
-        legend.columnMaximum = 5
-        legend.deltax = 48
-        legend.dx = 7
-        legend.dy = 7
-        legend.dxTextSpace = 4
+
+        # 15 entries (14 cells + current) are arranged as five columns with
+        # three rows, matching the wider three-line legend in v1.0.0.
+        legend.columnMaximum = 3
+        legend.deltax = 92
+        legend.deltay = 12
+        legend.dx = 8
+        legend.dy = 8
+        legend.dxTextSpace = 5
         legend.colorNamePairs = colour_pairs
         drawing.add(legend)
 
