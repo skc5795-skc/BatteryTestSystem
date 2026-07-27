@@ -1,5 +1,7 @@
 {
     "TEST": {
-        "mfg_date": "2026-02-24"
+        "mfg_date": "2026-02-24",
+        "cell_batch": "",
+        "build_id": ""
     }
 }
