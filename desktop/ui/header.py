@@ -74,9 +74,18 @@ def build_header(window):
     """
     header = QFrame()
     header.setObjectName("appHeader")
+    if isinstance(COPPERSTONE_TEAL, QColor):
+        teal_color = COPPERSTONE_TEAL.name()
+    else:
+        teal_color = str(COPPERSTONE_TEAL)
+
     header.setStyleSheet(
-        f"QFrame#appHeader {{ background:{COPPERSTONE_TEAL}; "
-        "border-radius:7px; }}"
+        f"""
+        QFrame#appHeader {{
+            background-color: {teal_color};
+            border-radius: 7px;
+        }}
+        """
     )
     header.setFixedHeight(100)
 
