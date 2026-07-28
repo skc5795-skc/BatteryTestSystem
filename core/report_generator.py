@@ -797,9 +797,9 @@ def _build_discharge_chart(session: TestSession) -> Drawing:
         ]
         chart.data.append(list(zip(times[:len(mapped)], mapped)))
         current_index = len(chart.data) - 1
-        chart.lines[current_index].strokeColor = colors.HexColor(COPPERSTONE_TEAL)
+        chart.lines[current_index].strokeColor = colors.HexColor("#FF00FF")
         chart.lines[current_index].strokeWidth = 3
-        colour_pairs.append((colors.HexColor(COPPERSTONE_TEAL), "Current"))
+        colour_pairs.append((colors.HexColor("#FF00FF"), "Current"))
 
     drawing.add(chart)
     drawing.add(String(
