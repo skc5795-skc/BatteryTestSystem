@@ -65,6 +65,7 @@ APP_NAME = "Battery Test System"
 APP_VERSION = "1.0.1"
 LOGO_PATH = "logo.png"
 
+
 # Google Chat webhook notifications.
 # Keep the webhook URL private because it contains authentication parameters.
 GOOGLE_CHAT_NOTIFICATIONS_ENABLED = True

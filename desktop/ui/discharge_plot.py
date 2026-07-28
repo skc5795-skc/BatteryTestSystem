@@ -71,7 +71,7 @@ def build_discharge_plot(window):
     self.current_line = pg.PlotDataItem(
         pen=pg.mkPen(
             color= COPPERSTONE_TEAL,
-            width=8,
+            width=4,
             style=Qt.PenStyle.SolidLine,
         ),
         name="Current (A)",

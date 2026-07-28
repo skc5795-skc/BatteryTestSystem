@@ -244,8 +244,8 @@ class BatteryTestUI(QMainWindow):
         except Exception as e:
             print(f"Error saving local DB: {e}")
 
-    def _build_logo(self, max_height: int = 44, white: bool = False):
-        return build_logo(self, max_height=max_height, white=white)
+    def _build_logo(self, max_height: int = 44):
+        return build_logo(self, max_height=max_height)
 
     def _build_header(self):
         return build_header(self)
